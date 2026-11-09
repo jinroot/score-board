@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Score Board</title>
+<meta name="description" content="Score tracker for Screw (SKRU) and any game where you add up points each round. Works offline and resumes after refresh.">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d10;
+    --surface: #16161c;
+    --surface2: #1e1e28;
+    --border: #2e2e3e;
+    --accent: #e8ff5a;
+    --accent2: #ff5a7e;
+    --accent3: #5ae8ff;
+    --text: #f0f0f5;
+    --muted: #6b6b80;
+    --zero: #5ae8ff;
+    --r5: #c97eff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse 80% 60% at 10% 20%, rgba(232,255,90,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 90% 80%, rgba(90,168,255,0.04) 0%, transparent 60%);
+  }
+  .page { position: relative; z-index: 1; }
+
+  /* ── MODE + SETUP SCREENS ── */
+  .center-screen { min-height: 100vh; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; gap: 2rem; }
+  .logo { text-align: center; }
+  .logo h1 { font-family: 'Bebas Neue', sans-serif; font-size: clamp(3.2rem,15vw,7.5rem); letter-spacing: .08em; color: var(--accent); line-height: 1; text-shadow: 0 0 60px rgba(232,255,90,.3); }
+  .logo p { font-family: 'DM Mono', monospace; font-size: .75rem; letter-spacing: .3em; color: var(--muted); text-transform: uppercase; }
+
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; width: 100%; max-width: 640px; }
+  .mode-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem;
+    text-align: left; color: var(--text); cursor: pointer; display: flex; flex-direction: column; gap: .6rem;
+    transition: border-color .2s, transform .15s; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    font-family: 'Syne', sans-serif;
+  }
+  .mode-card:hover { transform: translateY(-2px); }
+  .mode-card:active { transform: translateY(0); }
+  .mode-card h3 { font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem; letter-spacing: .08em; line-height: 1; }
+  .mode-card p { font-family: 'DM Mono', monospace; font-size: .72rem; color: var(--muted); line-height: 1.6; }
+  .mode-card .mode-cta { font-family: 'DM Mono', monospace; font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; margin-top: auto; padding-top: .4rem; }
+  .mode-card.screw h3, .mode-card.screw .mode-cta { color: var(--accent); }
+  .mode-card.screw:hover { border-color: var(--accent); }
+  .mode-card.normal h3, .mode-card.normal .mode-cta { color: var(--accent3); }
+  .mode-card.normal:hover { border-color: var(--accent3); }
+
+  .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 1.25rem; }
+  .setup-card h2 { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .3em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: .75rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .wide-card { max-width: 640px; }
+
+  .field-group { display: flex; flex-direction: column; gap: .5rem; }
+  label { font-size: .8rem; font-weight: 600; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+
+  input[type="text"], input[type="number"], input[type="file"] {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 1rem;
+    padding: .65rem .9rem; width: 100%; outline: none; transition: border-color .2s; -webkit-appearance: none;
+  }
+  input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accent); }
+  input[type="file"] { font-size: .8rem; padding: .5rem .75rem; cursor: pointer; }
+  input[type="file"]::file-selector-button {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--accent3); font-family: 'DM Mono', monospace; font-size: .7rem;
+    padding: .3rem .65rem; cursor: pointer; margin-right: .6rem; letter-spacing: .05em;
+  }
+
+  .player-inputs { display: flex; flex-direction: column; gap: .5rem; }
+  .player-input-row { display: flex; align-items: center; gap: .5rem; }
+  .player-num { font-family: 'DM Mono', monospace; font-size: .75rem; color: var(--accent); width: 1.5rem; flex-shrink: 0; text-align: right; }
+
+  /* Banners (rematch / resume) */
+  .info-banner {
+    background: rgba(90,232,255,.07); border: 1px solid rgba(90,232,255,.25);
+    border-radius: 10px; padding: .75rem 1rem; display: flex; flex-direction: column; gap: .5rem;
+  }
+  .info-banner-title { font-family: 'DM Mono', monospace; font-size: .65rem; letter-spacing: .2em; color: var(--accent3); text-transform: uppercase; }
+  .info-banner-body { font-family: 'DM Mono', monospace; font-size: .75rem; color: var(--text); line-height: 1.7; }
+  .banner-actions { display: flex; gap: .5rem; }
+  .btn-cyan {
+    background: var(--accent3); color: #0d0d10; border: none; border-radius: 7px;
+    font-family: 'Syne', sans-serif; font-size: .8rem; font-weight: 700;
+    padding: .55rem .9rem; cursor: pointer; flex: 1; touch-action: manipulation;
+  }
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border); border-radius: 7px;
+    color: var(--muted); font-family: 'Syne', sans-serif; font-size: .8rem; font-weight: 600;
+    padding: .55rem .9rem; cursor: pointer; flex: 1; touch-action: manipulation;
+  }
+  .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+  .btn-back { flex: none; padding: .3rem .7rem; font-size: .65rem; font-family: 'DM Mono', monospace; letter-spacing: .1em; }
+  .btn-back:hover { border-color: var(--accent); color: var(--accent); }
+
+  .upload-divider { display: flex; align-items: center; gap: .75rem; }
+  .upload-divider span { font-family: 'DM Mono', monospace; font-size: .65rem; color: var(--muted); white-space: nowrap; }
+  .upload-divider::before, .upload-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .btn-primary {
+    background: var(--accent); color: #0d0d10; border: none; border-radius: 8px;
+    font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700;
+    padding: .85rem 1.5rem; cursor: pointer; width: 100%; letter-spacing: .05em;
+    transition: opacity .15s; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .btn-primary:active { opacity: .8; }
+  .btn-primary.cyan { background: var(--accent3); }
+
+  /* ── MODALS ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.78);
+    z-index: 200; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-card {
+    background: var(--surface); border-radius: 16px; padding: 1.75rem;
+    max-width: 420px; width: 100%; display: flex; flex-direction: column; gap: 1rem;
+  }
+  .modal-card.accent { border: 1px solid var(--accent); }
+  .modal-card.danger { border: 1px solid var(--accent2); }
+  .modal-card h3 { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: .1em; }
+  .modal-card h3.cy { color: var(--accent); }
+  .modal-card h3.cr { color: var(--accent2); }
+  .modal-card p { font-family: 'DM Mono', monospace; font-size: .78rem; color: var(--muted); line-height: 1.6; }
+  .modal-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .btn-danger { background: var(--accent2); color: #0d0d10; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: .85rem; font-weight: 700; padding: .7rem 1.25rem; cursor: pointer; flex: 1; touch-action: manipulation; }
+
+  /* ── GAME SCREEN ── */
+  #game-screen { display: none; padding: 1rem; max-width: 960px; margin: 0 auto; }
+
+  .game-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; gap: .5rem; flex-wrap: wrap; }
+  .game-meta { display: flex; flex-direction: column; gap: .1rem; }
+  .game-meta .game-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: .08em; color: var(--accent); line-height: 1; word-break: break-word; }
+  .game-meta .game-subtitle { font-family: 'DM Mono', monospace; font-size: .65rem; letter-spacing: .2em; color: var(--muted); text-transform: uppercase; }
+  .mode-tag { font-family: 'DM Mono', monospace; font-size: .55rem; letter-spacing: .15em; border-radius: 4px; padding: .1rem .4rem; margin-right: .4rem; border: 1px solid currentColor; }
+  .mode-tag.screw { color: var(--accent); }
+  .mode-tag.normal { color: var(--accent3); }
+
+  .header-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+  .btn-icon {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); cursor: pointer; font-family: 'DM Mono', monospace; font-size: .68rem;
+    letter-spacing: .04em; padding: .48rem .65rem; display: flex; align-items: center; gap: .3rem;
+    transition: border-color .2s, background .2s; white-space: nowrap;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .btn-icon:hover { border-color: var(--accent); background: var(--surface2); }
+  .btn-icon:disabled { opacity: .3; cursor: not-allowed; }
+  .btn-icon.danger:hover { border-color: var(--accent2); }
+  .btn-icon.save:hover { border-color: var(--accent3); }
+  .btn-icon.json { border-color: rgba(201,126,255,.4); color: var(--r5); }
+
+  /* Round bar (screw) */
+  .round-bar { display: flex; gap: .4rem; margin-bottom: 1rem; align-items: center; }
+  .round-pip { height: 6px; flex: 1; border-radius: 99px; background: var(--border); transition: background .3s; }
+  .round-pip.done { background: var(--accent); }
+  .round-pip.active { background: var(--accent); opacity: .5; animation: pulse-pip 1.4s ease-in-out infinite; }
+  .round-pip.r5-active { background: var(--r5); opacity: .7; animation: pulse-pip 1.4s ease-in-out infinite; }
+  .round-pip.r5-done { background: var(--r5); }
+  @keyframes pulse-pip { 0%,100%{opacity:.5}50%{opacity:1} }
+  .round-label { font-family: 'DM Mono', monospace; font-size: .65rem; color: var(--muted); letter-spacing: .15em; white-space: nowrap; }
+
+  /* Scoreboard */
+  .scoreboard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 1rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .scoreboard table { width: 100%; border-collapse: collapse; min-width: 260px; }
+  .scoreboard th {
+    font-family: 'DM Mono', monospace; font-size: .6rem; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); padding: .6rem .5rem; text-align: center;
+    border-bottom: 1px solid var(--border); background: var(--surface2); white-space: nowrap;
+  }
+  .scoreboard th.player-col { text-align: left; padding-left: .75rem; position: sticky; left: 0; z-index: 2; }
+  .scoreboard th.total-col { color: var(--accent); border-left: 1px solid var(--border); }
+  .scoreboard td { padding: .6rem .5rem; text-align: center; font-family: 'DM Mono', monospace; font-size: .85rem; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  .scoreboard tr:last-child td { border-bottom: none; }
+  .scoreboard td.player-col { text-align: left; font-family: 'Syne', sans-serif; font-weight: 600; font-size: .85rem; padding-left: .75rem; position: sticky; left: 0; background: var(--surface); z-index: 1; }
+  .player-col-inner { display: flex; align-items: center; gap: .5rem; }
+  .player-rank { font-family: 'DM Mono', monospace; font-size: .58rem; color: var(--accent); background: rgba(232,255,90,.1); border-radius: 4px; padding: .1rem .3rem; min-width: 1.3rem; text-align: center; flex-shrink: 0; }
+  .player-rank.winner { background: rgba(232,255,90,.2); font-size: .65rem; }
+  .score-val { display: inline-block; padding: .15rem .4rem; border-radius: 5px; font-weight: 500; }
+  .score-val.zero { color: var(--zero); }
+  .score-val.high { color: var(--accent2); }
+  .score-val.neg { color: var(--accent2); }
+  .score-val.doubled { color: var(--r5); }
+  .total-col-td { font-weight: 700; font-size: 1rem; border-left: 1px solid var(--border); }
+  .winner-row td { background: rgba(232,255,90,.04); }
+  .winner-row td.player-col { background: #1a1b1c; }
+  .empty-note { font-family: 'DM Mono', monospace; font-size: .65rem; color: var(--muted); letter-spacing: .1em; }
+
+  /* Input section */
+  .input-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.1rem; margin-bottom: 1rem; }
+  .input-section.round5 { border-color: rgba(201,126,255,.45); background: rgba(201,126,255,.025); }
+  .round5-banner { display: none; background: rgba(201,126,255,.1); border: 1px solid rgba(201,126,255,.3); border-radius: 8px; padding: .6rem .85rem; font-family: 'DM Mono', monospace; font-size: .68rem; color: var(--r5); letter-spacing: .04em; margin-bottom: .9rem; line-height: 1.55; }
+  .input-section-title { font-family: 'DM Mono', monospace; font-size: .62rem; letter-spacing: .2em; color: var(--muted); text-transform: uppercase; margin-bottom: .9rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .round-badge { background: var(--accent); color: #0d0d10; border-radius: 4px; padding: .1rem .45rem; font-size: .62rem; font-weight: 700; }
+  .round-badge.r5 { background: var(--r5); }
+  .round-badge.normal { background: var(--accent3); }
+  .input-hint { letter-spacing: .05em; text-transform: none; }
+
+  .score-inputs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .6rem; margin-bottom: .9rem; }
+  .score-input-box { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+  .score-input-box label { font-size: .68rem; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .score-input-box label strong { color: var(--text); font-weight: 600; }
+  .score-input-box input { font-size: 1.15rem; padding: .6rem .75rem; }
+
+  .input-row-actions { display: flex; gap: .5rem; }
+  .btn-confirm { background: var(--accent); color: #0d0d10; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: .9rem; font-weight: 700; padding: .8rem 1.25rem; cursor: pointer; letter-spacing: .05em; flex: 1; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: opacity .15s; }
+  .btn-confirm.normal { background: var(--accent3); }
+  .btn-confirm:active { opacity: .8; }
+  .btn-side { background: transparent; border: 1px solid var(--border); border-radius: 8px; font-family: 'Syne', sans-serif; font-size: .85rem; font-weight: 600; color: var(--muted); padding: .8rem 1rem; cursor: pointer; touch-action: manipulation; transition: border-color .2s, color .2s; white-space: nowrap; }
+  .btn-side:hover { border-color: var(--accent3); color: var(--accent3); }
+  .btn-side.end:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* SKRU selector */
+  .skru-indicator { margin-bottom: 1rem; }
+  .skru-hint { font-family: 'DM Mono', monospace; font-size: .63rem; color: var(--muted); letter-spacing: .07em; margin-bottom: .5rem; display: block; }
+  .skru-options { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .skru-opt { font-family: 'DM Mono', monospace; font-size: .68rem; letter-spacing: .1em; padding: .3rem .7rem; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); cursor: pointer; transition: all .15s; user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .skru-opt:hover { border-color: var(--accent2); color: var(--accent2); }
+  .skru-opt.selected { border-color: var(--accent2); color: var(--accent2); background: rgba(255,90,126,.12); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px)} 40%,80%{transform:translateX(5px)} }
+  .skru-required { animation: shake .35s ease; border-radius: 8px; outline: 1px solid var(--accent2); }
+
+  .starter-badge {
+    font-family: 'DM Mono', monospace; font-size: .52rem; letter-spacing: .1em;
+    background: rgba(90,232,255,.15); border: 1px solid rgba(90,232,255,.4);
+    color: var(--accent3); border-radius: 4px; padding: .1rem .35rem; margin-left: .4rem;
+    vertical-align: middle; white-space: nowrap;
+  }
+
+  /* Game over */
+  #game-over-screen { display: none; padding: 1.5rem 0; max-width: 600px; margin: 0 auto; text-align: center; }
+  .gameover-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.5rem,12vw,4rem); letter-spacing: .1em; color: var(--accent); text-shadow: 0 0 40px rgba(232,255,90,.3); margin-bottom: .25rem; }
+  .gameover-title.normal { color: var(--accent3); text-shadow: 0 0 40px rgba(90,232,255,.3); }
+  .gameover-sub { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .3em; color: var(--muted); margin-bottom: 2rem; word-break: break-word; }
+  .final-podium { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.5rem; }
+  .podium-row { display: flex; align-items: center; gap: .75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: .75rem 1rem; }
+  .podium-row.draw { border-color: var(--accent); background: rgba(232,255,90,.05); }
+  .podium-place { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: var(--muted); width: 1.8rem; }
+  .podium-row.draw .podium-place { color: var(--accent); }
+  .podium-name { flex: 1; font-weight: 600; font-size: .95rem; text-align: left; word-break: break-word; }
+  .podium-score { font-family: 'DM Mono', monospace; font-size: 1.1rem; font-weight: 700; }
+  .podium-row.draw .podium-score { color: var(--accent); }
+  .draw-notice { font-family: 'DM Mono', monospace; font-size: .7rem; color: var(--accent); letter-spacing: .1em; margin-bottom: .75rem; padding: .5rem .9rem; background: rgba(232,255,90,.07); border: 1px solid rgba(232,255,90,.2); border-radius: 8px; display: none; }
+
+  .gameover-actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'Syne', sans-serif; font-size: .85rem; font-weight: 600; padding: .65rem 1.25rem; cursor: pointer; touch-action: manipulation; transition: border-color .2s; }
+  .btn-secondary:hover { border-color: var(--accent3); }
+  .btn-secondary.json { border-color: rgba(201,126,255,.3); color: var(--r5); }
+
+  /* Random pick overlay */
+  .random-pick-name {
+    font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.5rem,12vw,4rem);
+    color: var(--accent3); letter-spacing: .08em; min-height: 4rem;
+    display: flex; align-items: center; justify-content: center; transition: color .1s; word-break: break-word;
+  }
+  .random-pick-name.final { color: var(--accent); text-shadow: 0 0 30px rgba(232,255,90,.5); animation: finalPop .3s ease; }
+  @keyframes finalPop { 0%{transform:scale(.85)} 60%{transform:scale(1.12)} 100%{transform:scale(1)} }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(5rem); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: .6rem 1.1rem; font-family: 'DM Mono', monospace; font-size: .78rem; color: var(--accent); z-index: 300; transition: transform .3s ease; pointer-events: none; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  .storage-tag { font-family: 'DM Mono', monospace; font-size: .58rem; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 99px; padding: .15rem .5rem; letter-spacing: .1em; position: fixed; bottom: .6rem; right: .75rem; z-index: 50; }
+
+  @media (max-width: 560px) {
+    .mode-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    #game-screen { padding: .75rem; }
+    .game-header { flex-direction: column; align-items: flex-start; }
+    .header-actions { width: 100%; }
+    .scoreboard th, .scoreboard td { padding: .5rem .35rem; font-size: .72rem; }
+    .scoreboard td.player-col { font-size: .78rem; }
+    .score-inputs-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ════════ MODE SELECT ════════ -->
+<div id="mode-screen" class="center-screen">
+  <div class="logo"><h1>SCORE BOARD</h1><p>Pick a game to start</p></div>
+
+  <div id="resume-section" class="setup-card wide-card" style="display:none;">
+    <div class="info-banner">
+      <div class="info-banner-title" id="resume-title">⚡ Saved game found</div>
+      <div class="info-banner-body" id="resume-meta"></div>
+      <div class="banner-actions">
+        <button class="btn-cyan" onclick="resumeSaved()">↩ Resume</button>
+        <button class="btn-ghost" onclick="discardSaved()">✕ Discard</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mode-grid">
+    <button class="mode-card screw" onclick="pickMode('screw')">
+      <h3>SCREW</h3>
+      <p>5 rounds of the card game Screw (SKRU). Pick who called SKRU, round 5 doubles, lowest total wins.</p>
+      <span class="mode-cta">Play Screw →</span>
+    </button>
+    <button class="mode-card normal" onclick="pickMode('normal')">
+      <h3>NORMAL GAME</h3>
+      <p>For dominoes, cards, anything. Enter points each round and they add to a running total. Play as long as you like.</p>
+      <span class="mode-cta">Play Normal →</span>
+    </button>
+  </div>
+
+  <div class="setup-card wide-card">
+    <div class="field-group">
+      <label for="upload-file">Restore a game from a saved .json file</label>
+      <input type="file" id="upload-file" accept=".json,.txt,application/json" onchange="handleUpload(event)" />
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SETUP ════════ -->
+<div id="setup-screen" class="center-screen">
+  <div class="logo"><h1 id="setup-logo">SCREW</h1><p id="setup-sub">New game</p></div>
+
+  <div class="setup-card">
+    <h2><span id="setup-heading">New Game Setup</span><button class="btn-ghost btn-back" onclick="backToModes()">← Back</button></h2>
+
+    <div id="rematch-section" style="display:none;">
+      <div class="info-banner">
+        <div class="info-banner-title">🔁 Rematch with same players?</div>
+        <div class="info-banner-body" id="rematch-names"></div>
+        <div class="banner-actions">
+          <button class="btn-cyan" onclick="startRematch()">Rematch ▶</button>
+          <button class="btn-ghost" onclick="hideRematch()">New Players</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label for="game-name">Game Name</label>
+      <input type="text" id="game-name" placeholder="e.g. Game #1 or Friday Night" maxlength="60" />
+    </div>
+
+    <div class="field-group">
+      <label for="player-count">Number of Players (2–10)</label>
+      <input type="number" id="player-count" min="2" max="10" value="4" inputmode="numeric" />
+    </div>
+
+    <div class="field-group">
+      <label>Player Names</label>
+      <div class="player-inputs" id="player-inputs"></div>
+    </div>
+
+    <button class="btn-primary" id="start-btn" onclick="startGame()">Start Game ▶</button>
+  </div>
+</div>
+
+<!-- ════════ GAME ════════ -->
+<div id="game-screen">
+  <div class="game-header">
+    <div class="game-meta">
+      <div class="game-title" id="display-game-name">GAME #1</div>
+      <div class="game-subtitle"><span class="mode-tag" id="display-mode-tag">SCREW</span><span id="display-round-label">Round 1 of 5</span></div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" id="undo-btn" onclick="undo()">↩ Undo</button>
+      <button class="btn-icon" id="redo-btn" onclick="redo()">↪ Redo</button>
+      <button class="btn-icon save" onclick="saveToFile()">⬇ TXT</button>
+      <button class="btn-icon save json" onclick="exportJSON()">⬇ JSON</button>
+      <button class="btn-icon danger" onclick="confirmNewGame()">✕ New</button>
+    </div>
+  </div>
+
+  <div class="round-bar" id="round-bar">
+    <span class="round-label" id="round-progress-label">R1</span>
+    <div class="round-pip" id="pip-1"></div>
+    <div class="round-pip" id="pip-2"></div>
+    <div class="round-pip" id="pip-3"></div>
+    <div class="round-pip" id="pip-4"></div>
+    <div class="round-pip" id="pip-5"></div>
+  </div>
+
+  <div class="scoreboard" id="scoreboard">
+    <table id="score-table">
+      <thead><tr id="score-thead"></tr></thead>
+      <tbody id="score-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="input-section" id="input-section">
+    <div class="round5-banner" id="round5-banner">⚡ ROUND 5: DOUBLE ROUND. Everyone's score is ×2 except the lowest (→ 0). The SKRU penalty is ×4 instead of ×2.</div>
+    <div class="input-section-title">Enter scores for <span class="round-badge" id="input-round-badge">Round 1</span><span class="input-hint" id="input-hint"></span></div>
+    <div class="skru-indicator" id="skru-indicator">
+      <span class="skru-hint">Who called SKRU? <span style="color:var(--accent2)">★ Required</span> (penalty ×2 if not lowest · R5: ×4)</span>
+      <div class="skru-options" id="skru-options"></div>
+    </div>
+    <div class="score-inputs-grid" id="score-inputs-grid"></div>
+    <div class="input-row-actions">
+      <button class="btn-confirm" id="confirm-btn" onclick="submitRound()">Confirm Round Scores ✓</button>
+      <button class="btn-side" id="skip-btn" onclick="skipRound()" title="Skip this round (no scores recorded)">⏭ Skip</button>
+      <button class="btn-side end" id="end-btn" onclick="endGame()">⏹ End Game</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER (shown under the scoreboard) -->
+  <div id="game-over-screen">
+    <div class="gameover-title" id="gameover-title">GAME OVER</div>
+    <div class="gameover-sub" id="gameover-sub">FINAL RESULTS</div>
+    <div class="draw-notice" id="draw-notice"></div>
+    <div class="final-podium" id="final-podium"></div>
+    <div class="gameover-actions">
+      <button class="btn-secondary" id="keep-playing-btn" onclick="keepPlaying()">↩ Keep Playing</button>
+      <button class="btn-secondary" onclick="saveToFile()">⬇ Save TXT</button>
+      <button class="btn-secondary json" onclick="exportJSON()">⬇ Save JSON</button>
+      <button class="btn-primary" style="width:auto;padding:.65rem 1.5rem;" onclick="confirmNewGame()">New Game →</button>
+    </div>
+  </div>
+</div>
+
+<!-- RANDOM PICK OVERLAY -->
+<div id="random-pick-overlay" class="modal-overlay">
+  <div class="modal-card accent" style="text-align:center;gap:1.5rem;align-items:center;">
+    <h3 class="cy" style="font-size:1rem;letter-spacing:.2em;">🎲 PICKING FIRST PLAYER</h3>
+    <div id="random-pick-name" class="random-pick-name">?</div>
+    <p style="font-size:.7rem;">Goes first this round!</p>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div id="confirm-modal" class="modal-overlay">
+  <div class="modal-card danger">
+    <h3 class="cr" id="confirm-title">Are you sure?</h3>
+    <p id="confirm-text"></p>
+    <div class="modal-actions">
+      <button class="btn-danger" id="confirm-yes">Yes</button>
+      <button class="btn-ghost" id="confirm-no">Cancel</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- .page -->
+
+<div id="toast"></div>
+<div class="storage-tag" title="Your game is saved in this browser (localStorage + cookies) after every change.">💾 auto-saved on this device</div>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => { const r = Math.round(n * 100) / 100; return Object.is(r, -0) ? 0 : r; };
+const clone = o => JSON.parse(JSON.stringify(o));
+const totalOf = p => fmt(p.scores.reduce((s, v) => s + (v ?? 0), 0));
+const SCREW_ROUNDS = 5;
+
+// ════════════════════════════════════════════
+//  STORAGE — localStorage (primary) + cookies (backup)
+//  Every change is written to both. On load, whichever copy is newer wins.
+// ════════════════════════════════════════════
+const LS_SESSION = 'scoreboard_session_v4';
+const LS_LAST    = 'scoreboard_last_players';
+const OLD_SESSION = 'skru_session_v3';      // previous SKRU version
+const OLD_LAST    = 'skru_last_players';
+const CK_SESSION = 'sb_session';            // chunked: sb_session_n, sb_session_0..N
+const CK_LAST    = 'sb_last';
+const COOKIE_CHUNK = 3500;                  // stay under the ~4KB per-cookie limit
+const COOKIE_MAX_CHUNKS = 20;
+const COOKIE_AGE = 60 * 60 * 24 * 365;      // 1 year
+
+// Only escape the characters cookies can't hold, so JSON stays compact.
+const ckEncode = s => s.replace(/[%;,"\\\s]|[^\x20-\x7e]/gu, c => encodeURIComponent(c));
+const ckDecode = s => decodeURIComponent(s);
+
+function setCookie(name, value, maxAge) {
+  document.cookie = `${name}=${value}; max-age=${maxAge}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+}
+function getCookie(name) {
+  const hit = document.cookie.split('; ').find(c => c.startsWith(name + '='));
+  return hit ? hit.slice(name.length + 1) : null;
+}
+function writeCookieChunks(base, str) {
+  const enc = ckEncode(str);
+  const n = Math.ceil(enc.length / COOKIE_CHUNK);
+  if (n > COOKIE_MAX_CHUNKS) return false;
+  const old = parseInt(getCookie(base + '_n')) || 0;
+  for (let i = 0; i < n; i++) setCookie(`${base}_${i}`, enc.slice(i * COOKIE_CHUNK, (i + 1) * COOKIE_CHUNK), COOKIE_AGE);
+  for (let i = n; i < old; i++) setCookie(`${base}_${i}`, '', 0);
+  setCookie(base + '_n', n, COOKIE_AGE);
+  return true;
+}
+function readCookieChunks(base) {
+  const n = parseInt(getCookie(base + '_n')) || 0;
+  if (!n) return null;
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const part = getCookie(`${base}_${i}`);
+    if (part === null) return null;
+    s += part;
+  }
+  return ckDecode(s);
+}
+function clearCookieChunks(base) {
+  const n = parseInt(getCookie(base + '_n')) || 0;
+  for (let i = 0; i < n; i++) setCookie(`${base}_${i}`, '', 0);
+  setCookie(base + '_n', '', 0);
+}
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
+const parse = s => { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } };
+
+function persist() {
+  if (!state) return;
+  const savedAt = Date.now();
+  const draft = collectDraft();
+  // localStorage: full copy including undo/redo history
+  lsSet(LS_SESSION, JSON.stringify({ v: 4, savedAt, state, draft, history, future }));
+  // cookies: game + unconfirmed inputs (history skipped to save space)
+  try {
+    if (!writeCookieChunks(CK_SESSION, JSON.stringify({ v: 4, savedAt, state, draft }))) {
+      writeCookieChunks(CK_SESSION, JSON.stringify({ v: 4, savedAt, state }));
+    }
+  } catch (e) {}
+}
+
+function loadSaved() {
+  const candidates = [];
+  const ls = parse(lsGet(LS_SESSION));
+  if (ls) candidates.push(ls);
+  try { const ck = parse(readCookieChunks(CK_SESSION)); if (ck) candidates.push(ck); } catch (e) {}
+  const old = parse(lsGet(OLD_SESSION));
+  if (old && old.state) candidates.push({ v: 3, savedAt: Date.parse(old.savedAt) || 0, state: old.state });
+  const valid = candidates.filter(c => normalizeState(c.state));
+  if (!valid.length) return null;
+  valid.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  return valid[0];
+}
+
+function clearSaved() {
+  lsDel(LS_SESSION); lsDel(OLD_SESSION);
+  try { clearCookieChunks(CK_SESSION); } catch (e) {}
+}
+
+function saveLastPlayers(names) {
+  const s = JSON.stringify(names);
+  lsSet(LS_LAST, s);
+  try { setCookie(CK_LAST, ckEncode(s), COOKIE_AGE); } catch (e) {}
+}
+function loadLastPlayers() {
+  let names = parse(lsGet(LS_LAST));
+  if (!Array.isArray(names)) { try { names = parse(ckDecode(getCookie(CK_LAST) || '')); } catch (e) { names = null; } }
+  if (!Array.isArray(names)) names = parse(lsGet(OLD_LAST));
+  return Array.isArray(names) && names.length >= 2 ? names.map(String) : null;
+}
+
+// ════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════
+let state = null;
+let history = [], future = [], skruCaller = -1;
+let pendingDraft = null;
+let setupMode = 'screw';
+
+function newState(mode, gameName, names) {
+  return {
+    mode, gameName,
+    players: names.map(n => ({ name: n, scores: mode === 'screw' ? Array(SCREW_ROUNDS).fill(null) : [] })),
+    currentRound: 0,
+    totalRounds: mode === 'screw' ? SCREW_ROUNDS : null,
+    roundStarterIndex: -1,
+    lastRoundSkruCaller: -1,
+    finished: false
+  };
+}
+
+// Validates and upgrades a state (from storage, a file or an older version).
+function normalizeState(s) {
+  if (!s || typeof s !== 'object' || !Array.isArray(s.players) || s.players.length < 1) return null;
+  const mode = s.mode === 'normal' ? 'normal' : 'screw';
+  const players = s.players.map((p, i) => {
+    const raw = Array.isArray(p && p.scores) ? p.scores : [];
+    const scores = raw.map(v => (v === null || v === undefined || !isFinite(Number(v))) ? null : Number(v));
+    return { name: String((p && p.name) || `Player ${i + 1}`), scores };
+  });
+  let currentRound;
+  if (mode === 'screw') {
+    players.forEach(p => { p.scores = p.scores.slice(0, SCREW_ROUNDS); while (p.scores.length < SCREW_ROUNDS) p.scores.push(null); });
+    currentRound = Math.min(SCREW_ROUNDS, Math.max(0, parseInt(s.currentRound) || 0));
+  } else {
+    currentRound = Math.max(0, ...players.map(p => p.scores.length));
+    players.forEach(p => { while (p.scores.length < currentRound) p.scores.push(0); });
+  }
+  const idx = v => { const n = parseInt(v); return (n >= 0 && n < players.length) ? n : -1; };
+  return {
+    mode,
+    gameName: String(s.gameName || 'Game'),
+    players,
+    currentRound,
+    totalRounds: mode === 'screw' ? SCREW_ROUNDS : null,
+    roundStarterIndex: idx(s.roundStarterIndex),
+    lastRoundSkruCaller: idx(s.lastRoundSkruCaller),
+    finished: mode === 'normal' ? !!s.finished : false
+  };
+}
+
+const isOver = () => state.mode === 'screw' ? state.currentRound >= SCREW_ROUNDS : !!state.finished;
+
+function collectDraft() {
+  if (!state || isOver()) return null;
+  const inputs = state.players.map((_, i) => { const el = $('score-input-' + i); return el ? el.value : ''; });
+  return { round: state.currentRound, inputs, skru: skruCaller };
+}
+
+// ════════════════════════════════════════════
+//  SCREENS
+// ════════════════════════════════════════════
+function showScreen(id) {
+  ['mode-screen', 'setup-screen', 'game-screen'].forEach(s => {
+    $(s).style.display = s === id ? (s === 'game-screen' ? 'block' : 'flex') : 'none';
+  });
+  window.scrollTo(0, 0);
+}
+
+function initModeScreen() {
+  showScreen('mode-screen');
+  const saved = loadSaved();
+  const s = saved && normalizeState(saved.state);
+  if (!s) { $('resume-section').style.display = 'none'; return; }
+  const over = s.mode === 'screw' ? s.currentRound >= SCREW_ROUNDS : s.finished;
+  const progress = s.mode === 'screw'
+    ? `Round ${s.currentRound} of ${SCREW_ROUNDS} complete`
+    : `${s.currentRound} round${s.currentRound === 1 ? '' : 's'} played`;
+  $('resume-title').textContent = over ? '🏁 Last game (finished)' : '⚡ Game in progress';
+  $('resume-meta').innerHTML =
+    `<b style="color:var(--accent)">${esc(s.gameName)}</b> · ${s.mode === 'screw' ? 'Screw' : 'Normal game'}<br>` +
+    `Players: ${esc(s.players.map(p => p.name).join(', '))}<br>` +
+    `${progress}${over ? ' · finished' : ''}<br>` +
+    (saved.savedAt ? `Saved: ${new Date(saved.savedAt).toLocaleString()}` : '');
+  $('resume-section').style.display = 'flex';
+}
+
+function resumeSaved() {
+  const saved = loadSaved();
+  const s = saved && normalizeState(saved.state);
+  if (!s) { showToast('No saved game found'); initModeScreen(); return; }
+  state = s;
+  history = (saved.history || []).map(normalizeState).filter(Boolean);
+  future  = (saved.future  || []).map(normalizeState).filter(Boolean);
+  pendingDraft = (saved.draft && saved.draft.round === state.currentRound) ? saved.draft : null;
+  skruCaller = pendingDraft && Number.isInteger(pendingDraft.skru) && pendingDraft.skru < state.players.length ? pendingDraft.skru : -1;
+  showScreen('game-screen');
+  renderAll();
+  persist();
+  showToast('Game resumed ✓');
+  if (state.mode === 'screw' && !isOver() && state.roundStarterIndex < 0) determineRoundStarter();
+}
+
+function discardSaved() {
+  askConfirm('Discard saved game?', 'The saved game will be deleted from this device. This cannot be undone.', () => {
+    clearSaved();
+    initModeScreen();
+    showToast('Saved game discarded');
+  });
+}
+
+function backToModes() { initModeScreen(); }
+
+// ════════════════════════════════════════════
+//  SETUP
+// ════════════════════════════════════════════
+function pickMode(mode) {
+  setupMode = mode;
+  const screw = mode === 'screw';
+  $('setup-logo').textContent = screw ? 'SCREW' : 'NORMAL GAME';
+  $('setup-logo').style.color = screw ? 'var(--accent)' : 'var(--accent3)';
+  $('setup-sub').textContent = screw ? '5 rounds · lowest total wins' : 'Add up points every round';
+  $('setup-heading').textContent = screw ? 'Screw Setup' : 'Normal Game Setup';
+  $('start-btn').classList.toggle('cyan', !screw);
+  $('game-name').value = '';
+  $('player-count').value = 4;
+  renderPlayerFields();
+  checkRematch();
+  showScreen('setup-screen');
+}
+
+function playerCount() {
+  return Math.min(10, Math.max(2, parseInt($('player-count').value) || 4));
+}
+
+function renderPlayerFields() {
+  const container = $('player-inputs');
+  const existing = Array.from(container.querySelectorAll('input')).map(i => i.value);
+  const count = playerCount();
+  container.innerHTML = '';
+  for (let i = 1; i <= count; i++) {
+    const row = document.createElement('div');
+    row.className = 'player-input-row';
+    row.innerHTML = `<span class="player-num">${i}.</span><input type="text" placeholder="Player ${i}" id="pname-${i}" maxlength="24" />`;
+    row.querySelector('input').value = existing[i - 1] || '';
+    container.appendChild(row);
+  }
+}
+$('player-count').addEventListener('input', () => { if ($('player-count').value !== '') renderPlayerFields(); });
+$('player-count').addEventListener('change', () => { $('player-count').value = playerCount(); renderPlayerFields(); });
+
+function checkRematch() {
+  const names = loadLastPlayers();
+  if (!names) { $('rematch-section').style.display = 'none'; return; }
+  $('rematch-names').textContent = names.join(' · ');
+  $('rematch-section').style.display = 'block';
+}
+function hideRematch() { $('rematch-section').style.display = 'none'; }
+
+function beginGame(names, gameName) {
+  state = newState(setupMode, gameName, names);
+  history = []; future = []; skruCaller = -1; pendingDraft = null;
+  showScreen('game-screen');
+  renderAll();
+  persist();
+  if (state.mode === 'screw') determineRoundStarter();
+  else focusInput(0);
+}
+
+function startGame() {
+  const count = playerCount();
+  const names = [];
+  for (let i = 1; i <= count; i++) {
+    const inp = $(`pname-${i}`);
+    names.push((inp && inp.value.trim()) || `Player ${i}`);
+  }
+  beginGame(names, $('game-name').value.trim() || 'Game #1');
+}
+
+function startRematch() {
+  const names = loadLastPlayers();
+  if (!names) return;
+  beginGame(names, $('game-name').value.trim() || 'Rematch');
+}
+
+// ════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════
+function renderAll() {
+  const s = state, screw = s.mode === 'screw', over = isOver(), cr = s.currentRound;
+
+  $('display-game-name').textContent = s.gameName.toUpperCase();
+  const tag = $('display-mode-tag');
+  tag.textContent = screw ? 'SCREW' : 'NORMAL';
+  tag.className = 'mode-tag ' + s.mode;
+  $('display-round-label').textContent = screw
+    ? (over ? `All ${SCREW_ROUNDS} rounds complete` : `Round ${cr + 1} of ${SCREW_ROUNDS}`)
+    : (over ? `Finished · ${cr} round${cr === 1 ? '' : 's'}` : `Round ${cr + 1} · ${cr} played`);
+
+  // Round pips (screw only)
+  $('round-bar').style.display = screw ? 'flex' : 'none';
+  if (screw) {
+    for (let i = 1; i <= SCREW_ROUNDS; i++) {
+      const pip = $(`pip-${i}`);
+      pip.className = 'round-pip';
+      const last = i === SCREW_ROUNDS;
+      if (i <= cr) pip.classList.add(last ? 'r5-done' : 'done');
+      else if (i === cr + 1 && !over) pip.classList.add(last ? 'r5-active' : 'active');
+    }
+    $('round-progress-label').textContent = `R${Math.min(cr + 1, SCREW_ROUNDS)}`;
+  }
+
+  if (screw) renderScrewTable(); else renderNormalTable();
+  renderInputs();
+
+  // Game over panel
+  if (over) {
+    saveLastPlayers(s.players.map(p => p.name));
+    renderGameOver();
+  } else {
+    $('game-over-screen').style.display = 'none';
+  }
+  $('undo-btn').disabled = history.length === 0;
+  $('redo-btn').disabled = future.length === 0;
+}
+
+function renderScrewTable() {
+  const { players, currentRound } = state;
+  $('score-thead').innerHTML =
+    `<th class="player-col">Player</th><th class="total-col">Total</th>` +
+    Array.from({ length: SCREW_ROUNDS }, (_, i) => `<th>${i === SCREW_ROUNDS - 1 ? '⚡R5' : 'R' + (i + 1)}</th>`).join('');
+
+  const totals = players.map(totalOf);
+  const minTotal = Math.min(...totals);
+  const ranked = players.map((p, i) => ({ ...p, idx: i, total: totals[i] })).sort((a, b) => a.total - b.total);
+
+  $('score-tbody').innerHTML = ranked.map((p, rank) => {
+    const isWinner = p.total === minTotal && currentRound > 0;
+    const cells = p.scores.map((v, ri) => {
+      if (v === null) return `<td>—</td>`;
+      let cls = '';
+      if (v === 0) cls = 'zero';
+      else if (ri === SCREW_ROUNDS - 1) cls = 'doubled';
+      else if (v > 15) cls = 'high';
+      return `<td><span class="score-val ${cls}">${fmt(v)}</span></td>`;
+    }).join('');
+    const starter = p.idx === state.roundStarterIndex && !isOver() ? `<span class="starter-badge">▶ STARTS</span>` : '';
+    return `<tr class="${isWinner ? 'winner-row' : ''}">
+      <td class="player-col"><div class="player-col-inner">
+        <span class="${isWinner ? 'player-rank winner' : 'player-rank'}">${isWinner ? '🏆' : rank + 1}</span>
+        ${esc(p.name)}${starter}
+      </div></td>
+      <td class="total-col-td" style="color:${isWinner ? 'var(--accent)' : 'var(--text)'}">${p.total}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+function renderNormalTable() {
+  const { players, currentRound } = state;
+  $('score-thead').innerHTML =
+    `<th class="player-col">Player</th><th class="total-col">Total</th>` +
+    (currentRound === 0
+      ? `<th><span class="empty-note">no rounds yet</span></th>`
+      : Array.from({ length: currentRound }, (_, i) => `<th>R${i + 1}</th>`).join(''));
+
+  $('score-tbody').innerHTML = players.map((p, i) => {
+    const cells = currentRound === 0 ? `<td>—</td>` : p.scores.map(v => {
+      const cls = v === 0 ? 'zero' : (v < 0 ? 'neg' : '');
+      return `<td><span class="score-val ${cls}">${fmt(v ?? 0)}</span></td>`;
+    }).join('');
+    return `<tr>
+      <td class="player-col"><div class="player-col-inner"><span class="player-rank">${i + 1}</span>${esc(p.name)}</div></td>
+      <td class="total-col-td">${totalOf(p)}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  // Keep the newest round in view
+  const sb = $('scoreboard');
+  sb.scrollLeft = sb.scrollWidth;
+}
+
+function renderInputs() {
+  const s = state, screw = s.mode === 'screw', cr = s.currentRound;
+  const section = $('input-section');
+  if (isOver()) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  const isRound5 = screw && cr + 1 === SCREW_ROUNDS;
+  section.className = isRound5 ? 'input-section round5' : 'input-section';
+  $('round5-banner').style.display = isRound5 ? 'block' : 'none';
+  const badge = $('input-round-badge');
+  badge.textContent = `Round ${cr + 1}`;
+  badge.className = 'round-badge' + (isRound5 ? ' r5' : (screw ? '' : ' normal'));
+  $('input-hint').textContent = screw ? '' : '· blank = 0 · negatives OK';
+
+  $('skru-indicator').style.display = screw ? 'block' : 'none';
+  $('skip-btn').style.display = screw ? '' : 'none';
+  $('end-btn').style.display = screw ? 'none' : '';
+  const confirmBtn = $('confirm-btn');
+  confirmBtn.textContent = screw ? 'Confirm Round Scores ✓' : 'Add Round ✓';
+  confirmBtn.className = 'btn-confirm' + (screw ? '' : ' normal');
+
+  if (screw) renderSkruOptions();
+
+  // Rebuild inputs; keep what's typed if we're still on the same round
+  const grid = $('score-inputs-grid');
+  const sameRound = grid.dataset.round === String(cr) && grid.dataset.mode === s.mode && grid.children.length === s.players.length;
+  let values = sameRound ? Array.from(grid.querySelectorAll('input')).map(i => i.value) : [];
+  if (pendingDraft && pendingDraft.round === cr && Array.isArray(pendingDraft.inputs)) {
+    values = pendingDraft.inputs.map(v => String(v ?? ''));
+    pendingDraft = null;
+  }
+  grid.dataset.round = String(cr);
+  grid.dataset.mode = s.mode;
+  grid.innerHTML = s.players.map((p, i) => `
+    <div class="score-input-box">
+      <label for="score-input-${i}" title="${esc(p.name)}"><strong>${esc(p.name)}</strong></label>
+      <input type="number" id="score-input-${i}" ${screw ? 'min="0" inputmode="numeric"' : 'step="any"'} placeholder="0" enterkeyhint="${i === s.players.length - 1 ? 'done' : 'next'}" />
+    </div>`).join('');
+  s.players.forEach((_, i) => { $('score-input-' + i).value = values[i] || ''; });
+}
+
+// Save typed-but-unconfirmed scores so a refresh doesn't lose them
+$('score-inputs-grid').addEventListener('input', () => persist());
+$('score-inputs-grid').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !e.target.id.startsWith('score-input-')) return;
+  e.preventDefault();
+  const i = parseInt(e.target.id.slice('score-input-'.length));
+  if (i < state.players.length - 1) focusInput(i + 1); else submitRound();
+});
+function focusInput(i) { const el = $('score-input-' + i); if (el) el.focus(); }
+
+function renderSkruOptions() {
+  $('skru-options').innerHTML = state.players.map((p, i) =>
+    `<span class="skru-opt ${skruCaller === i ? 'selected' : ''}" onclick="selectSkru(${i})">${esc(p.name)}</span>`
+  ).join('');
+}
+function selectSkru(idx) {
+  skruCaller = skruCaller === idx ? -1 : idx;
+  renderSkruOptions();
+  persist();
+}
+
+// ════════════════════════════════════════════
+//  SCREW — ROUND LOGIC
+// ════════════════════════════════════════════
+function submitRound() {
+  if (state.mode === 'normal') return submitNormalRound();
+  const { players, currentRound } = state;
+  const isRound5 = currentRound + 1 === SCREW_ROUNDS;
+
+  if (skruCaller === -1) {
+    showToast('⚠ Select who called SKRU first!');
+    const ind = $('skru-indicator');
+    ind.classList.add('skru-required');
+    setTimeout(() => ind.classList.remove('skru-required'), 900);
+    return;
+  }
+
+  const raw = [];
+  for (let i = 0; i < players.length; i++) {
+    const val = parseInt($(`score-input-${i}`).value);
+    if (isNaN(val) || val < 0) { showToast(`Enter a valid score for ${players[i].name}`); focusInput(i); return; }
+    raw.push(val);
+  }
+
+  const minRaw = Math.min(...raw);
+  let finalScores = raw.map((v, i) => {
+    const penalty = skruCaller === i && v !== minRaw;
+    if (isRound5) return penalty ? v * 4 : v * 2;
+    return penalty ? v * 2 : v;
+  });
+  const minFinal = Math.min(...finalScores);
+  finalScores = finalScores.map(v => v === minFinal ? 0 : v);
+
+  saveHistory();
+  state = {
+    ...state,
+    players: players.map((p, i) => { const ns = [...p.scores]; ns[currentRound] = finalScores[i]; return { ...p, scores: ns }; }),
+    currentRound: currentRound + 1,
+    lastRoundSkruCaller: skruCaller
+  };
+  skruCaller = -1;
+  future = [];
+  renderAll();
+  persist();
+  showToast(`Round ${currentRound + 1} scores saved!`);
+  if (!isOver()) determineRoundStarter();
+}
+
+function skipRound() {
+  askConfirm(`Skip Round ${state.currentRound + 1}?`, 'No scores will be recorded for this round.', () => {
+    saveHistory();
+    const r = state.currentRound;
+    state = {
+      ...state,
+      players: state.players.map(p => { const ns = [...p.scores]; ns[r] = null; return { ...p, scores: ns }; }),
+      currentRound: r + 1
+    };
+    skruCaller = -1;
+    future = [];
+    renderAll();
+    persist();
+    showToast(`Round ${r + 1} skipped`);
+  });
+}
+
+// Random first player / who starts next round
+function animateRandomPick(players, callback) {
+  const overlay = $('random-pick-overlay');
+  const nameEl = $('random-pick-name');
+  overlay.classList.add('show');
+  let count = 0;
+  const totalFlashes = 18, baseDelay = 60;
+  (function flash() {
+    nameEl.textContent = players[Math.floor(Math.random() * players.length)].name;
+    count++;
+    if (count < totalFlashes) { setTimeout(flash, baseDelay + count * 12); return; }
+    const finalIdx = Math.floor(Math.random() * players.length);
+    nameEl.textContent = players[finalIdx].name;
+    nameEl.classList.add('final');
+    setTimeout(() => {
+      overlay.classList.remove('show');
+      nameEl.classList.remove('final');
+      callback(finalIdx);
+    }, 1800);
+  })();
+}
+
+function setStarter(idx) {
+  state.roundStarterIndex = idx;
+  renderAll();
+  persist();
+}
+
+function determineRoundStarter() {
+  const { players, currentRound } = state;
+  if (currentRound === 0) {
+    animateRandomPick(players, idx => {
+      setStarter(idx);
+      showToast(`${players[idx].name} goes first! 🎲`);
+    });
+    return;
+  }
+  // Lowest scorer of the previous round starts
+  const prev = currentRound - 1;
+  const prevScores = players.map(p => p.scores[prev] ?? Infinity);
+  const minPrev = Math.min(...prevScores);
+  const lowest = prevScores.reduce((arr, v, i) => (v === minPrev && arr.push(i), arr), []);
+
+  if (lowest.length === 1) { setStarter(lowest[0]); return; }
+
+  const lrsc = state.lastRoundSkruCaller ?? -1;
+  if (lrsc >= 0 && lowest.includes(lrsc)) {
+    setStarter(lrsc);
+    showToast(`${players[lrsc].name} called SKRU & scored lowest, so they start next! ⭐`);
+  } else {
+    animateRandomPick(lowest.map(i => players[i]), pick => {
+      const idx = lowest[pick];
+      setStarter(idx);
+      showToast(`Draw! ${players[idx].name} starts Round ${currentRound + 1} 🎲`);
+    });
+  }
+}
+
+// ════════════════════════════════════════════
+//  NORMAL — ROUND LOGIC
+// ════════════════════════════════════════════
+function submitNormalRound() {
+  const { players, currentRound } = state;
+  const vals = [];
+  for (let i = 0; i < players.length; i++) {
+    const v = $(`score-input-${i}`).value.trim();
+    const n = v === '' ? 0 : Number(v);
+    if (!isFinite(n)) { showToast(`Enter a valid number for ${players[i].name}`); focusInput(i); return; }
+    vals.push(n);
+  }
+  saveHistory();
+  state = {
+    ...state,
+    players: players.map((p, i) => ({ ...p, scores: [...p.scores, vals[i]] })),
+    currentRound: currentRound + 1
+  };
+  future = [];
+  renderAll();
+  persist();
+  showToast(`Round ${currentRound + 1} added ✓`);
+  focusInput(0);
+}
+
+function endGame() {
+  const typed = state.players.some((_, i) => $('score-input-' + i).value.trim() !== '');
+  askConfirm('End the game?', typed
+      ? 'Scores typed for this round have not been added yet and will be dropped. You can still undo or keep playing afterwards.'
+      : 'Shows final totals. You can still undo or keep playing afterwards.',
+    () => {
+      saveHistory();
+      state = { ...state, finished: true };
+      future = [];
+      renderAll();
+      persist();
+      $('game-over-screen').scrollIntoView({ behavior: 'smooth' });
+    });
+}
+
+function keepPlaying() {
+  if (state.mode !== 'normal') return;
+  saveHistory();
+  state = { ...state, finished: false };
+  future = [];
+  renderAll();
+  persist();
+  focusInput(0);
+}
+
+// ════════════════════════════════════════════
+//  GAME OVER
+// ════════════════════════════════════════════
+function renderGameOver() {
+  const screw = state.mode === 'screw';
+  $('game-over-screen').style.display = 'block';
+  $('gameover-title').textContent = screw ? 'GAME OVER' : 'FINAL TOTALS';
+  $('gameover-title').className = 'gameover-title' + (screw ? '' : ' normal');
+  $('gameover-sub').textContent = state.gameName.toUpperCase() + (screw ? ' · FINAL RESULTS' : ` · ${state.currentRound} ROUNDS`);
+  $('keep-playing-btn').style.display = screw ? 'none' : '';
+
+  const drawNotice = $('draw-notice');
+  const podium = $('final-podium');
+
+  if (!screw) {
+    // Normal game: just the totals, in player order
+    drawNotice.style.display = 'none';
+    podium.innerHTML = state.players.map((p, i) => `
+      <div class="podium-row">
+        <div class="podium-place">${i + 1}</div>
+        <div class="podium-name">${esc(p.name)}</div>
+        <div class="podium-score">${totalOf(p)} pts</div>
+      </div>`).join('');
+    return;
+  }
+
+  // Screw: lowest total wins, ties share a rank
+  const totals = state.players.map(p => ({ name: p.name, total: totalOf(p) })).sort((a, b) => a.total - b.total);
+  const minTotal = totals[0].total;
+  const winners = totals.filter(p => p.total === minTotal);
+  drawNotice.style.display = winners.length > 1 ? 'block' : 'none';
+  if (winners.length > 1) drawNotice.textContent = `🏆 TIE: ${winners.map(w => w.name).join(' & ')} all win!`;
+
+  const rows = [];
+  let rank = 1;
+  for (let i = 0; i < totals.length;) {
+    const t = totals[i].total;
+    const group = [];
+    while (i < totals.length && totals[i].total === t) group.push(totals[i++]);
+    const win = t === minTotal;
+    group.forEach(p => rows.push(`
+      <div class="podium-row ${win ? 'draw' : ''}">
+        <div class="podium-place">${win ? '🏆' : rank}</div>
+        <div class="podium-name">${esc(p.name)}</div>
+        <div class="podium-score">${p.total} pts</div>
+      </div>`));
+    rank += group.length;
+  }
+  podium.innerHTML = rows.join('');
+}
+
+// ════════════════════════════════════════════
+//  UNDO / REDO
+// ════════════════════════════════════════════
+function saveHistory() {
+  history.push(clone(state));
+  if (history.length > 50) history.shift();
+}
+function undo() {
+  if (!history.length) return;
+  future.push(clone(state));
+  state = history.pop(); skruCaller = -1;
+  renderAll(); persist(); showToast('Undo ↩');
+}
+function redo() {
+  if (!future.length) return;
+  history.push(clone(state));
+  state = future.pop(); skruCaller = -1;
+  renderAll(); persist(); showToast('Redo ↪');
+}
+
+// ════════════════════════════════════════════
+//  EXPORT / IMPORT
+// ════════════════════════════════════════════
+const slug = s => (s || 'game').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'game';
+
+function download(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Saved as ${filename} ⬇`);
+}
+
+function exportJSON() {
+  const payload = { app: 'score-board', version: 4, exportedAt: new Date().toISOString(), state: clone(state) };
+  download(JSON.stringify(payload, null, 2), `scoreboard_${state.mode}_${slug(state.gameName)}.json`, 'application/json');
+}
+
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const payload = parse(e.target.result);
+    const loaded = normalizeState(payload && (payload.state || payload));
+    if (!loaded) { showToast('Invalid file: could not load'); return; }
+    state = loaded;
+    history = []; future = []; skruCaller = -1; pendingDraft = null;
+    showScreen('game-screen');
+    renderAll();
+    persist();
+    showToast('Game loaded from file ✓');
+    if (state.mode === 'screw' && !isOver() && state.roundStarterIndex < 0) determineRoundStarter();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function saveToFile() {
+  const { gameName, players, currentRound, mode } = state;
+  const screw = mode === 'screw';
+  const rounds = screw ? SCREW_ROUNDS : currentRound;
+  const divider = '─'.repeat(Math.max(54, 24 + rounds * 8));
+  const pad = (s, w) => String(s).padEnd(w);
+  const rpad = (s, w) => String(s).padStart(w);
+  const colW = 8, nameW = 16;
+  const lines = [
+    'SCORE BOARD',
+    `Mode: ${screw ? 'Screw' : 'Normal game'}`,
+    `Game: ${gameName}`,
+    `Date: ${new Date().toLocaleString()}`,
+    screw ? `Rounds: ${currentRound}/${SCREW_ROUNDS}` : `Rounds played: ${currentRound}`,
+    divider, ''
+  ];
+  lines.push(pad('Player', nameW) + rpad('Total', colW) +
+    Array.from({ length: rounds }, (_, i) => rpad(screw && i === SCREW_ROUNDS - 1 ? 'R5*' : `R${i + 1}`, colW)).join(''));
+  lines.push(divider);
+  const totals = players.map(totalOf);
+  const minTotal = Math.min(...totals);
+  players.forEach((p, i) => {
+    const cols = p.scores.slice(0, rounds).map(v => rpad(v === null ? '—' : fmt(v), colW)).join('');
+    const star = screw && totals[i] === minTotal && currentRound > 0 ? ' ★' : '';
+    lines.push(pad(p.name.slice(0, nameW - 1), nameW) + rpad(totals[i], colW) + cols + star);
+  });
+  if (screw) {
+    lines.push('', '* R5 = Double Round (×2, lowest → 0, SKRU ×4)', divider, 'RANKING (lowest wins):');
+    players.map((p, i) => ({ name: p.name, total: totals[i] })).sort((a, b) => a.total - b.total)
+      .forEach((p, i) => lines.push(`  ${i + 1}. ${p.name}: ${p.total} pts`));
+  } else {
+    lines.push(divider, 'TOTALS:');
+    players.forEach((p, i) => lines.push(`  ${p.name}: ${totals[i]} pts`));
+  }
+  lines.push('', 'Generated by Score Board');
+  download(lines.join('\n'), `scoreboard_${mode}_${slug(gameName)}.txt`, 'text/plain');
+}
+
+// ════════════════════════════════════════════
+//  NEW GAME
+// ════════════════════════════════════════════
+function confirmNewGame() {
+  const go = () => {
+    clearSaved();
+    state = null; history = []; future = []; skruCaller = -1; pendingDraft = null;
+    $('score-inputs-grid').dataset.round = '';
+    initModeScreen();
+  };
+  const inProgress = state && !isOver() && (state.currentRound > 0 || collectDraft()?.inputs.some(v => v !== ''));
+  if (inProgress) askConfirm('Start a new game?', 'The current game will be cleared from this device. Save it as JSON first if you want to keep it.', go);
+  else go();
+}
+
+// ════════════════════════════════════════════
+//  CONFIRM MODAL + TOAST
+// ════════════════════════════════════════════
+function askConfirm(title, text, onYes) {
+  $('confirm-title').textContent = title;
+  $('confirm-text').textContent = text;
+  const modal = $('confirm-modal');
+  const close = () => modal.classList.remove('show');
+  $('confirm-yes').onclick = () => { close(); onYes(); };
+  $('confirm-no').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+  modal.classList.add('show');
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// ════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('confirm-modal').classList.remove('show');
+});
+initModeScreen();
+</script>
+</body>
+</html>
